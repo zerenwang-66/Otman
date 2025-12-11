@@ -250,11 +250,11 @@ const PhotoDisplay = React.memo(({ data, appState, isSelected }: { data: Particl
 
 const Experience: React.FC<ExperienceProps> = ({ appState, photos, handDataRef, activePhotoIndex, onPhotoSelect }) => {
   const particles = useMemo(() => {
-    const items: ParticleData[] = [];
     const count = CONFIG.PARTICLE_COUNT;
     const phi = Math.PI * (3 - Math.sqrt(5));
+    const types: ParticleData['type'][] = ['SPHERE', 'CUBE', 'CYLINDER'];
 
-    for (let i = 0; i < count; i++) {
+    return Array.from({ length: count }).map((_, i) => {
       const t = i / count;
       const yTree = (t * CONFIG.TREE_HEIGHT) - (CONFIG.TREE_HEIGHT / 2);
       const maxRadius = (1 - t) * CONFIG.TREE_RADIUS_BASE;
@@ -269,10 +269,9 @@ const Experience: React.FC<ExperienceProps> = ({ appState, photos, handDataRef, 
       const yScatter = (Math.random() - 0.5) * rScatter * 1.5;
       const zScatter = (Math.random() - 0.5) * rScatter * 2;
 
-      const types: ParticleData['type'][] = ['SPHERE', 'CUBE', 'CYLINDER'];
       const type = types[Math.floor(Math.random() * types.length)];
       
-      items.push({
+      return {
         id: i,
         initialPos: [xScatter, yScatter, zScatter],
         treePos: [xTree, yTree, zTree],
@@ -281,9 +280,8 @@ const Experience: React.FC<ExperienceProps> = ({ appState, photos, handDataRef, 
         color: '', 
         scale: Math.random() * 0.3 + 0.1,
         rotationSpeed: [Math.random(), Math.random(), Math.random()]
-      });
-    }
-    return items;
+      } as ParticleData;
+    });
   }, []);
 
   const { spheres, cubes, cylinders } = useMemo(() => {
