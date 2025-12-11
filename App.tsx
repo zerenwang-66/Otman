@@ -4,7 +4,7 @@ import { Loader } from '@react-three/drei';
 import Experience from './components/Experience';
 import HandController from './components/HandController';
 import { AppState, HandGesture, HandTrackingResult } from './types';
-import { COLORS } from './constants';
+import { COLORS, CHRISTMAS_MUSIC_URL } from './constants';
 
 const App = () => {
   const [appState, setAppState] = useState<AppState>(AppState.TREE);
@@ -12,6 +12,11 @@ const App = () => {
   const [isHandPresent, setIsHandPresent] = useState(false);
   const [currentGesture, setCurrentGesture] = useState<HandGesture>(HandGesture.NONE);
   const [activePhotoIndex, setActivePhotoIndex] = useState<number>(0);
+  
+  // Music State
+  const [musicUrl, setMusicUrl] = useState<string>(CHRISTMAS_MUSIC_URL);
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
   
   // Refs to keep track of state inside stable callbacks without triggering re-renders of children
   const appStateRef = useRef<AppState>(AppState.TREE);
@@ -31,13 +36,57 @@ const App = () => {
     photosRef.current = photos;
   }, [photos]);
 
+  // Set initial volume
+  useEffect(() => {
+    if (audioRef.current) {
+        audioRef.current.volume = 0.4;
+    }
+  }, []);
+
+  const toggleMusic = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    
+    if (isMusicPlaying) {
+      audio.pause();
+      setIsMusicPlaying(false);
+    } else {
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsMusicPlaying(true);
+          })
+          .catch(error => {
+            console.error("Audio playback failed:", error);
+            setIsMusicPlaying(false);
+          });
+      }
+    }
+  }, [isMusicPlaying]);
+
+  const handleMusicUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      const url = URL.createObjectURL(file);
+      setMusicUrl(url);
+      setIsMusicPlaying(true);
+    }
+  }, []);
+
+  // Effect to restart playback when music source changes if it's supposed to be playing
+  useEffect(() => {
+    if (isMusicPlaying && audioRef.current) {
+        audioRef.current.play().catch(e => console.warn("Playback failed on source change", e));
+    }
+  }, [musicUrl]); // Intentionally omitting isMusicPlaying to avoid conflict with toggleMusic
+
   // Stable callback that NEVER changes reference.
   const onHandUpdateProxy = useCallback((result: HandTrackingResult) => {
       // 1. Update high-frequency ref for 3D loop
       handDataRef.current = result;
       
       // 2. Logic to Select Photo is now handled inside Experience via Raycasting/Projection
-      // We no longer do simple X-axis mapping here.
 
       // 3. UI Updates (Throttled by React)
       setIsHandPresent(prev => prev !== result.isPresent ? result.isPresent : prev);
@@ -98,6 +147,9 @@ const App = () => {
       </Canvas>
       <Loader />
 
+      {/* Audio Element */}
+      <audio ref={audioRef} src={musicUrl} loop crossOrigin="anonymous" />
+
       {/* Hand Controller */}
       <HandController onUpdate={onHandUpdateProxy} />
 
@@ -114,24 +166,48 @@ const App = () => {
           </div>
           
           <div className="pointer-events-auto flex flex-col items-end gap-2">
-             <div className="flex gap-2">
-                {photos.length > 0 && (
+             <div className="flex items-center gap-3">
+                {/* Music Controls Group */}
+                <div className="flex items-center gap-1 bg-black/20 backdrop-blur-sm rounded-full p-1 border border-[#E6B2B8]/30">
                     <button 
-                        onClick={clearPhotos}
-                        className="px-4 py-2 border border-[#D14768]/50 text-[#D14768] rounded-full 
-                                bg-black/20 backdrop-blur-sm transition-all duration-300 
-                                hover:bg-[#D14768]/50 hover:text-white font-serif uppercase tracking-widest text-xs">
-                        Clear All
+                      onClick={toggleMusic}
+                      className={`w-10 h-8 rounded-full transition-all duration-300 font-serif text-xs flex items-center justify-center
+                        ${isMusicPlaying 
+                            ? 'bg-[#E6B2B8] text-[#1F0B12] shadow-[0_0_10px_rgba(230,178,184,0.4)]' 
+                            : 'text-[#E6B2B8] hover:bg-[#E6B2B8]/20'
+                        }`}
+                      title={isMusicPlaying ? "Pause Music" : "Play Music"}
+                    >
+                      {isMusicPlaying ? '❚❚' : '▶'}
                     </button>
-                )}
-                <label className="cursor-pointer group">
-                <input type="file" multiple className="hidden" accept="image/*" onChange={handlePhotoUpload} />
-                <div className="px-6 py-2 border border-[#E6B2B8] text-[#E6B2B8] rounded-full 
-                                bg-black/20 backdrop-blur-sm transition-all duration-300 
-                                hover:bg-[#E6B2B8] hover:text-[#1F0B12] font-serif uppercase tracking-widest text-sm shadow-[0_0_15px_rgba(230,178,184,0.2)]">
-                    + Upload Photos
+                    <label className="cursor-pointer group pr-3 pl-1 border-l border-[#E6B2B8]/20 h-full flex items-center">
+                        <input type="file" className="hidden" accept="audio/*" onChange={handleMusicUpload} />
+                        <div className="text-[#E6B2B8] hover:text-white transition-colors text-[10px] font-serif uppercase tracking-wider flex items-center gap-1">
+                           <span className="text-sm pb-0.5">↥</span> BGM
+                        </div>
+                    </label>
                 </div>
-                </label>
+
+                {/* Photo Controls Group */}
+                <div className="flex items-center gap-2">
+                    {photos.length > 0 && (
+                        <button 
+                            onClick={clearPhotos}
+                            className="px-4 py-2 border border-[#D14768]/50 text-[#D14768] rounded-full 
+                                    bg-black/20 backdrop-blur-sm transition-all duration-300 
+                                    hover:bg-[#D14768]/50 hover:text-white font-serif uppercase tracking-widest text-xs">
+                            Clear
+                        </button>
+                    )}
+                    <label className="cursor-pointer group">
+                    <input type="file" multiple className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+                    <div className="px-6 py-2 border border-[#E6B2B8] text-[#E6B2B8] rounded-full 
+                                    bg-black/20 backdrop-blur-sm transition-all duration-300 
+                                    hover:bg-[#E6B2B8] hover:text-[#1F0B12] font-serif uppercase tracking-widest text-xs shadow-[0_0_15px_rgba(230,178,184,0.2)]">
+                        + Photos
+                    </div>
+                    </label>
+                </div>
             </div>
             <p className="text-xs text-[#E6B2B8]/60 font-serif mt-1">
                 {photos.length} memories loaded

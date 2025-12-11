@@ -21,3 +21,6 @@ export const PLACEHOLDER_PHOTOS = [
   'https://picsum.photos/400/400?random=3',
   'https://picsum.photos/400/400?random=4',
 ];
+
+// Reliable MP3 source (Kevin MacLeod - Jingle Bells)
+export const CHRISTMAS_MUSIC_URL = 'https://ia801908.us.archive.org/27/items/KevinMacLeod_Christmas/Jingle_Bells.mp3';
