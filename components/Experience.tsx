@@ -159,8 +159,6 @@ const PhotoDisplay = React.memo(({ data, appState, isSelected }: { data: Particl
   const meshRef = useRef<THREE.Group>(null);
   const borderRef = useRef<THREE.Mesh>(null);
   
-  // Use refs to track target positions to ensure useFrame closure always has latest targets
-  // even if prop changes trigger re-render
   const targetPosRef = useRef(new THREE.Vector3(...data.treePos));
   const scatterPosRef = useRef(new THREE.Vector3(...data.scatterPos));
   const treePosRef = useRef(new THREE.Vector3(...data.treePos));
@@ -213,11 +211,9 @@ const PhotoDisplay = React.memo(({ data, appState, isSelected }: { data: Particl
 
     meshRef.current.position.lerp(targetPos, delta * 3);
     
-    // Smooth LookAt logic for zoom
     if (appState === AppState.ZOOM && isSelected) {
        meshRef.current.lookAt(state.camera.position);
     } else {
-       // Manual rotation lerp
        meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, targetRot.x, delta * 3);
        meshRef.current.rotation.y = THREE.MathUtils.lerp(meshRef.current.rotation.y, targetRot.y, delta * 3);
        meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, targetRot.z, delta * 3);
@@ -253,17 +249,20 @@ const PhotoDisplay = React.memo(({ data, appState, isSelected }: { data: Particl
 });
 
 const Experience: React.FC<ExperienceProps> = ({ appState, photos, handDataRef, activePhotoIndex, onPhotoSelect }) => {
-  // --- Ambient Particles (Static logic) ---
   const particles = useMemo(() => {
     const items: ParticleData[] = [];
     const count = CONFIG.PARTICLE_COUNT;
+    const phi = Math.PI * (3 - Math.sqrt(5));
+
     for (let i = 0; i < count; i++) {
       const t = i / count;
-      const angle = t * Math.PI * 20;
-      const radius = (1 - t) * CONFIG.TREE_RADIUS_BASE;
-      const xTree = radius * Math.cos(angle);
-      const zTree = radius * Math.sin(angle);
       const yTree = (t * CONFIG.TREE_HEIGHT) - (CONFIG.TREE_HEIGHT / 2);
+      const maxRadius = (1 - t) * CONFIG.TREE_RADIUS_BASE;
+      const angle = i * phi;
+      const rJitter = maxRadius * (0.3 + 0.7 * Math.sqrt(Math.random()));
+
+      const xTree = rJitter * Math.cos(angle);
+      const zTree = rJitter * Math.sin(angle);
 
       const rScatter = CONFIG.SCATTER_RADIUS;
       const xScatter = (Math.random() - 0.5) * rScatter * 2;
@@ -299,16 +298,13 @@ const Experience: React.FC<ExperienceProps> = ({ appState, photos, handDataRef, 
       return { spheres: s, cubes: c, cylinders: cyl };
   }, [particles]);
 
-  // --- Photo Particles (Dynamic State) ---
   const [photoParticles, setPhotoParticles] = useState<ParticleData[]>([]);
 
-  // 1. Initialize Particles when photos are uploaded
   useEffect(() => {
     const newParticles = photos.map((url, i): ParticleData => {
-        // Initial Calculation (Default Tree)
-        const yTree = ((i / photos.length) * CONFIG.TREE_HEIGHT) - (CONFIG.TREE_HEIGHT / 2);
-        const baseRadius = (1 - (i/photos.length)) * CONFIG.TREE_RADIUS_BASE;
-        const radius = baseRadius + 2.5; 
+        const t = i / photos.length;
+        const yTree = ((1 - t) * CONFIG.TREE_HEIGHT) - (CONFIG.TREE_HEIGHT / 2);
+        const radius = ((1 - t) * CONFIG.TREE_RADIUS_BASE) + 2.0; 
         const angle = i * 2.5; 
         const xTree = radius * Math.cos(angle);
         const zTree = radius * Math.sin(angle);
@@ -328,98 +324,74 @@ const Experience: React.FC<ExperienceProps> = ({ appState, photos, handDataRef, 
     setPhotoParticles(newParticles);
   }, [photos]);
 
-  // 2. Randomize Distribution on State Change
   useEffect(() => {
       if (photoParticles.length === 0) return;
-
       setPhotoParticles(prev => {
-          const next = prev.map(p => ({...p})); // Clone
-          
+          const next = prev.map(p => ({...p})); 
           if (appState === AppState.TREE) {
-              // Generate standard spiral positions for the current count
               const treePositions: [number, number, number][] = next.map((_, i) => {
-                  const yTree = ((i / next.length) * CONFIG.TREE_HEIGHT) - (CONFIG.TREE_HEIGHT / 2);
-                  const baseRadius = (1 - (i/next.length)) * CONFIG.TREE_RADIUS_BASE;
-                  const radius = baseRadius + 2.5; 
+                  const t = i / next.length;
+                  const yTree = ((1 - t) * CONFIG.TREE_HEIGHT) - (CONFIG.TREE_HEIGHT / 2);
+                  const radius = ((1 - t) * CONFIG.TREE_RADIUS_BASE) + 2.0; 
                   const angle = i * 2.5; 
                   return [radius * Math.cos(angle), yTree, radius * Math.sin(angle)];
               });
-              
-              // Shuffle the positions so photos land in different spots on the tree
               const shuffledPositions = shuffle(treePositions);
               next.forEach((p, i) => {
                   p.treePos = shuffledPositions[i];
               });
           } 
           else if (appState === AppState.SCATTER) {
-              // Generate new random scatter positions
               next.forEach(p => {
                  p.scatterPos = [(Math.random()-0.5)*15, (Math.random()-0.5)*15, (Math.random()-0.5)*10]; 
               });
           }
           return next;
       });
-  }, [appState, photos.length]); // Re-run when appState changes
+  }, [appState, photos.length]);
 
-  // --- Proximity Logic (Raycasting) ---
   const vec3Ref = useRef(new THREE.Vector3());
   
   useFrame((state) => {
-    // Only perform selection logic if not Zoomed in
     if (appState === AppState.ZOOM) return;
-    
     const handData = handDataRef.current;
     if (!handData.isPresent || photoParticles.length === 0) return;
-
-    // Convert Hand (0..1) to NDC (-1..1)
     const ndcX = (handData.position.x * 2) - 1;
-    const ndcY = -(handData.position.y * 2) + 1; // Invert Y for GL coords
+    const ndcY = -(handData.position.y * 2) + 1; 
 
     let minDist = Infinity;
-    let closestIndex = -1;
+    let closestIndex: number = -1;
 
     photoParticles.forEach((p, i) => {
-        // Determine current visual position approximately
-        if (appState === AppState.TREE) {
-            vec3Ref.current.set(...p.treePos);
-        } else {
-            vec3Ref.current.set(...p.scatterPos);
-        }
-
-        // Project world pos to screen space
+        if (appState === AppState.TREE) vec3Ref.current.set(...p.treePos);
+        else vec3Ref.current.set(...p.scatterPos);
+        
         vec3Ref.current.project(state.camera);
-
-        // Distance in Screen Space (NDC)
+        
         const dx = vec3Ref.current.x - ndcX;
         const dy = vec3Ref.current.y - ndcY;
         const dist = Math.sqrt(dx*dx + dy*dy);
-
+        
         if (dist < minDist) {
             minDist = dist;
             closestIndex = i;
         }
     });
 
-    // Threshold for selection (e.g., must be within reasonable range)
-    // 0.3 NDC units is roughly 15% of screen width
-    if (minDist < 0.4) {
+    if (minDist < 0.4 && closestIndex !== -1) {
         onPhotoSelect(closestIndex);
     }
   });
 
-  // --- Camera Movement ---
   useFrame((state, delta) => {
     const handData = handDataRef.current;
-    
     if (appState === AppState.SCATTER) {
       const targetX = (handData.position.x - 0.5) * 10; 
       const targetY = (handData.position.y - 0.5) * 5;  
-      
       const r = 25;
       const desiredCamX = Math.sin(targetX * 0.5) * r;
       const desiredCamZ = Math.cos(targetX * 0.5) * r;
       const desiredCamY = -targetY * 2;
-
       state.camera.position.lerp(new THREE.Vector3(desiredCamX, desiredCamY, desiredCamZ), delta * 2);
       state.camera.lookAt(0, 0, 0);
     } else if (appState === AppState.TREE) {
@@ -457,7 +429,7 @@ const Experience: React.FC<ExperienceProps> = ({ appState, photos, handDataRef, 
         ))}
       </group>
 
-      <EffectComposer>
+      <EffectComposer enableNormalPass={false}>
         <Bloom luminanceThreshold={0.2} mipmapBlur intensity={1.5} />
         <Vignette eskil={false} offset={0.1} darkness={1.1} />
       </EffectComposer>

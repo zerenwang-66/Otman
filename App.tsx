@@ -106,7 +106,7 @@ const App = () => {
         <header className="flex justify-between items-start">
           <div>
             <h1 className="text-4xl md:text-6xl text-[#E6B2B8] font-serif tracking-widest drop-shadow-[0_0_15px_rgba(230,178,184,0.6)]">
-              姚钰圣诞节快乐
+              Otman
             </h1>
             <p className="text-[#D14768] font-serif text-lg tracking-widest mt-2 uppercase opacity-90">
               Winter Pink Snow Edition

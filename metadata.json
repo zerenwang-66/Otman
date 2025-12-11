@@ -1,5 +1,5 @@
 {
-  "name": "姚钰圣诞节快乐",
+  "name": "Otman",
   "description": "A cinematic, gesture-controlled 3D Christmas experience using Three.js and MediaPipe.",
   "requestFramePermissions": [
     "camera"
