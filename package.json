@@ -15,7 +15,7 @@
     "three": "0.161.0",
     "@mediapipe/hands": "0.4.1675469240",
     "@react-three/postprocessing": "2.16.0",
-    "react-dom": "^19.2.1"
+    "react-dom": "18.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
